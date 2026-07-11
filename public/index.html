@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Impostor — Jogo de Dedução Social</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
+
+  <header class="py-4 text-center">
+    <h1 class="text-3xl font-extrabold tracking-tight">
+      🎭 <span class="text-rose-400">Impostor</span>
+    </h1>
+  </header>
+
+  <main class="flex-1 w-full max-w-xl mx-auto px-4 pb-8">
+
+    <!-- Toast de erro -->
+    <div id="toast" class="hidden fixed top-4 left-1/2 -translate-x-1/2 z-50
+      bg-rose-600 text-white px-4 py-2 rounded-lg shadow-lg text-sm font-medium"></div>
+
+    <!-- ============ TELA: HOME (criar / entrar) ============ -->
+    <section id="screen-home" class="screen space-y-6">
+      <div class="bg-slate-800 rounded-2xl p-6 space-y-4 shadow-xl">
+        <label class="block">
+          <span class="text-sm text-slate-400">Seu nome</span>
+          <input id="input-name" maxlength="16" placeholder="Ex: Henrique"
+            class="mt-1 w-full rounded-lg bg-slate-700 border-0 px-3 py-2.5 text-lg
+            focus:ring-2 focus:ring-rose-400 outline-none" />
+        </label>
+
+        <button id="btn-create"
+          class="w-full bg-rose-500 hover:bg-rose-400 active:scale-[.98] transition
+          rounded-lg py-3 font-bold text-lg">
+          Criar Sala
+        </button>
+
+        <div class="flex items-center gap-3 text-slate-500 text-sm">
+          <div class="flex-1 h-px bg-slate-700"></div> ou <div class="flex-1 h-px bg-slate-700"></div>
+        </div>
+
+        <div class="flex gap-2">
+          <input id="input-code" maxlength="4" placeholder="CÓDIGO"
+            class="flex-1 rounded-lg bg-slate-700 border-0 px-3 py-2.5 text-lg uppercase
+            tracking-widest text-center focus:ring-2 focus:ring-sky-400 outline-none" />
+          <button id="btn-join"
+            class="bg-sky-500 hover:bg-sky-400 active:scale-[.98] transition
+            rounded-lg px-6 font-bold">
+            Entrar
+          </button>
+        </div>
+      </div>
+
+      <div class="text-center text-sm text-slate-500 leading-relaxed">
+        Todos recebem uma palavra secreta — menos o <b class="text-rose-400">Impostor</b>.<br/>
+        Diga palavras relacionadas, desconfie de todos e vote no final!
+      </div>
+    </section>
+
+    <!-- ============ TELA: LOBBY ============ -->
+    <section id="screen-lobby" class="screen hidden space-y-4">
+      <div class="bg-slate-800 rounded-2xl p-6 text-center shadow-xl">
+        <div class="text-sm text-slate-400">Código da sala</div>
+        <div class="flex items-center justify-center gap-2 mt-1">
+          <span id="lobby-code" class="text-4xl font-extrabold tracking-[.3em] text-sky-400"></span>
+          <button id="btn-copy" title="Copiar código"
+            class="text-slate-400 hover:text-white text-xl">⧉</button>
+        </div>
+        <div class="text-xs text-slate-500 mt-2">Compartilhe com os amigos para entrarem</div>
+
+        <!-- Convite para outros dispositivos: QR + link -->
+        <div class="mt-4 flex flex-col items-center gap-3">
+          <div id="qr" class="bg-white p-2 rounded-xl"></div>
+          <button id="btn-copy-link"
+            class="bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 transition
+            rounded-lg px-4 py-2 text-sm font-medium">
+            📲 Compartilhar link de convite
+          </button>
+          <div class="text-xs text-slate-500">
+            Aponte a câmera do celular para o QR code<br/>ou envie o link no grupo
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-slate-800 rounded-2xl p-5 shadow-xl">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-bold">Jogadores</h2>
+          <span id="lobby-count" class="text-sm text-slate-400"></span>
+        </div>
+        <ul id="lobby-players" class="space-y-2"></ul>
+      </div>
+
+      <div id="lobby-host-controls" class="bg-slate-800 rounded-2xl p-5 shadow-xl space-y-4 hidden">
+        <label class="flex items-center justify-between">
+          <span class="font-bold">Rodadas</span>
+          <select id="select-rounds"
+            class="bg-slate-700 rounded-lg px-3 py-2 border-0 focus:ring-2 focus:ring-rose-400 outline-none">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3" selected>3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+          </select>
+        </label>
+        <button id="btn-start"
+          class="w-full bg-emerald-500 hover:bg-emerald-400 active:scale-[.98] transition
+          rounded-lg py-3 font-bold text-lg disabled:opacity-40 disabled:cursor-not-allowed">
+          Iniciar Partida
+        </button>
+      </div>
+
+      <p id="lobby-waiting" class="text-center text-slate-400 text-sm hidden">
+        Aguardando o host iniciar a partida…
+      </p>
+    </section>
+
+    <!-- ============ TELA: JOGO (rodadas) ============ -->
+    <section id="screen-game" class="screen hidden space-y-4">
+      <!-- Cartão do papel (palavra secreta ou impostor) -->
+      <div id="role-card" class="rounded-2xl p-5 text-center shadow-xl"></div>
+
+      <div class="flex items-center justify-between text-sm text-slate-400 px-1">
+        <span id="game-round"></span>
+        <span id="game-turn" class="font-medium"></span>
+      </div>
+
+      <!-- Mural de dicas -->
+      <div class="bg-slate-800 rounded-2xl p-5 shadow-xl">
+        <h2 class="font-bold mb-3">Palavras ditas</h2>
+        <div id="hints-board" class="space-y-3 max-h-72 overflow-y-auto"></div>
+      </div>
+
+      <!-- Entrada de dica (habilitada apenas na sua vez) -->
+      <form id="hint-form" class="flex gap-2">
+        <input id="input-hint" maxlength="40" autocomplete="off"
+          placeholder="Aguarde sua vez…" disabled
+          class="flex-1 rounded-lg bg-slate-700 border-0 px-3 py-3 text-lg
+          focus:ring-2 focus:ring-emerald-400 outline-none disabled:opacity-50" />
+        <button id="btn-hint" type="submit" disabled
+          class="bg-emerald-500 hover:bg-emerald-400 active:scale-[.98] transition
+          rounded-lg px-6 font-bold disabled:opacity-40 disabled:cursor-not-allowed">
+          Enviar
+        </button>
+      </form>
+    </section>
+
+    <!-- ============ TELA: MURAL DE VOTAÇÃO ============ -->
+    <section id="screen-voting" class="screen hidden space-y-4">
+      <div class="bg-slate-800 rounded-2xl p-5 text-center shadow-xl">
+        <h2 class="text-xl font-extrabold">🗳️ Mural de Votação</h2>
+        <p class="text-sm text-slate-400 mt-1">Quem é o Impostor?</p>
+      </div>
+
+      <div class="bg-slate-800 rounded-2xl p-5 shadow-xl">
+        <h3 class="font-bold mb-3 text-sm text-slate-400">Relembre as palavras ditas</h3>
+        <div id="voting-hints" class="space-y-3 max-h-48 overflow-y-auto text-sm"></div>
+      </div>
+
+      <div id="voting-grid" class="grid grid-cols-2 gap-3"></div>
+      <p id="voting-status" class="text-center text-slate-400 text-sm"></p>
+    </section>
+
+    <!-- ============ TELA: RESULTADOS ============ -->
+    <section id="screen-results" class="screen hidden space-y-4">
+      <div id="results-banner" class="rounded-2xl p-6 text-center shadow-xl"></div>
+
+      <div class="bg-slate-800 rounded-2xl p-5 shadow-xl">
+        <h3 class="font-bold mb-3">Votos</h3>
+        <ul id="results-votes" class="space-y-2 text-sm"></ul>
+      </div>
+
+      <div class="bg-slate-800 rounded-2xl p-5 shadow-xl">
+        <h3 class="font-bold mb-3">🏆 Placar</h3>
+        <ul id="results-scores" class="space-y-2"></ul>
+      </div>
+
+      <button id="btn-again"
+        class="w-full bg-rose-500 hover:bg-rose-400 active:scale-[.98] transition
+        rounded-lg py-3 font-bold text-lg hidden">
+        Nova Partida
+      </button>
+      <p id="results-waiting" class="text-center text-slate-400 text-sm hidden">
+        Aguardando o host iniciar uma nova partida…
+      </p>
+    </section>
+
+  </main>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

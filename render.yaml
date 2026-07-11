@@ -1,0 +1,11 @@
+# Blueprint do Render — deploy automático deste repositório.
+# Ao conectar o repo no Render (New + > Blueprint), ele lê este arquivo
+# e cria o serviço sozinho, sem configuração manual.
+services:
+  - type: web
+    name: impostor
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
