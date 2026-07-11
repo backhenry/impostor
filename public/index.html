@@ -42,12 +42,12 @@
         </div>
 
         <div class="flex gap-2">
-          <input id="input-code" maxlength="4" placeholder="CÓDIGO"
-            class="flex-1 rounded-lg bg-slate-700 border-0 px-3 py-2.5 text-lg uppercase
+          <input id="input-code" maxlength="4" placeholder="CÓDIGO" size="6"
+            class="flex-1 min-w-0 rounded-lg bg-slate-700 border-0 px-3 py-2.5 text-lg uppercase
             tracking-widest text-center focus:ring-2 focus:ring-sky-400 outline-none" />
           <button id="btn-join"
-            class="bg-sky-500 hover:bg-sky-400 active:scale-[.98] transition
-            rounded-lg px-6 font-bold">
+            class="shrink-0 bg-sky-500 hover:bg-sky-400 active:scale-[.98] transition
+            rounded-lg px-6 py-2.5 font-bold">
             Entrar
           </button>
         </div>
@@ -136,10 +136,10 @@
       <form id="hint-form" class="flex gap-2">
         <input id="input-hint" maxlength="40" autocomplete="off"
           placeholder="Aguarde sua vez…" disabled
-          class="flex-1 rounded-lg bg-slate-700 border-0 px-3 py-3 text-lg
+          class="flex-1 min-w-0 rounded-lg bg-slate-700 border-0 px-3 py-3 text-lg
           focus:ring-2 focus:ring-emerald-400 outline-none disabled:opacity-50" />
         <button id="btn-hint" type="submit" disabled
-          class="bg-emerald-500 hover:bg-emerald-400 active:scale-[.98] transition
+          class="shrink-0 bg-emerald-500 hover:bg-emerald-400 active:scale-[.98] transition
           rounded-lg px-6 font-bold disabled:opacity-40 disabled:cursor-not-allowed">
           Enviar
         </button>
