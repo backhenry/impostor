@@ -9,23 +9,38 @@ let myRole = null;  // { isImpostor, word?, category } — privado desta tela
 let myVote = null;  // targetId escolhido na votação atual
 
 // ---------- Sessão persistente (permite reconectar do mesmo aparelho) ----------
-// sessionStorage é por ABA: sobrevive a F5, tela bloqueada e quedas de rede,
-// e ainda permite testar com várias abas no mesmo navegador (cada aba é um
-// jogador diferente, como seriam dispositivos diferentes).
+// Gravamos em DOIS lugares:
+// - localStorage: sobrevive a tudo no aparelho (aba descartada em segundo
+//   plano, navegador fechado e reaberto) — o caso real dos celulares.
+// - sessionStorage: por ABA, tem prioridade na leitura — permite testar com
+//   várias abas no mesmo navegador (cada aba é um jogador diferente).
 const SESSION_KEY = 'impostor:session';
 
 function saveSession(code, playerId, name) {
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify({ code, playerId, name }));
+  const data = JSON.stringify({ code, playerId, name });
+  try {
+    sessionStorage.setItem(SESSION_KEY, data);
+    localStorage.setItem(SESSION_KEY, data);
+  } catch {
+    /* modo privado sem storage: segue sem persistência */
+  }
 }
 function loadSession() {
   try {
-    return JSON.parse(sessionStorage.getItem(SESSION_KEY));
+    return JSON.parse(
+      sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY)
+    );
   } catch {
     return null;
   }
 }
 function clearSession() {
-  sessionStorage.removeItem(SESSION_KEY);
+  try {
+    sessionStorage.removeItem(SESSION_KEY);
+    localStorage.removeItem(SESSION_KEY);
+  } catch {
+    /* sem storage, nada a limpar */
+  }
 }
 
 // ---------- Helpers de DOM ----------
@@ -138,6 +153,14 @@ $('hint-form').addEventListener('submit', (e) => {
   });
 });
 
+// ---------- Ações do PALPITE (impostor desmascarado) ----------
+$('guess-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  emit('game:guess', { text: $('input-guess').value }, () => {
+    $('input-guess').value = '';
+  });
+});
+
 // ---------- Ações dos RESULTADOS ----------
 $('btn-again').addEventListener('click', () => {
   myRole = null;
@@ -190,10 +213,11 @@ function render() {
   }
 
   switch (state.phase) {
-    case 'lobby':   return renderLobby();
-    case 'playing': return renderGame();
-    case 'voting':  return renderVoting();
-    case 'results': return renderResults();
+    case 'lobby':    return renderLobby();
+    case 'playing':  return renderGame();
+    case 'voting':   return renderVoting();
+    case 'guessing': return renderGuessing();
+    case 'results':  return renderResults();
   }
 }
 
@@ -382,31 +406,66 @@ function renderVoting() {
     : 'Toque em um jogador para votar.';
 }
 
+function renderGuessing() {
+  showScreen('guessing');
+  const isMe = myRole?.isImpostor;
+
+  $('guessing-banner').innerHTML = isMe
+    ? `<div class="text-2xl font-extrabold text-rose-400">😱 Você foi desmascarado!</div>
+       <div class="text-sm text-rose-200/80 mt-2">
+         Última chance de redenção: adivinhe a palavra secreta e ganhe
+         <b>+2 pontos</b> mesmo assim!
+       </div>`
+    : `<div class="text-2xl font-extrabold text-amber-300">🔎 ${escapeHtml(state.game.guessingName)} era o Impostor!</div>
+       <div class="text-sm text-amber-100/80 mt-2">
+         A maioria acertou. Agora ${escapeHtml(state.game.guessingName)} tem uma
+         última chance de adivinhar a palavra secreta…
+       </div>`;
+
+  $('guessing-hints').innerHTML = hintsBoardHtml(state.game.hints, state.game.totalRounds);
+  $('guess-form').classList.toggle('hidden', !isMe);
+  $('guessing-waiting').classList.toggle('hidden', Boolean(isMe));
+  if (isMe) $('input-guess').focus();
+}
+
 function renderResults() {
   showScreen('results');
   const r = state.game.results;
 
   const banner = $('results-banner');
   if (r.caught) {
+    const guessLine =
+      r.guess === null
+        ? ''
+        : r.guessedRight
+          ? `<div class="mt-3 text-amber-300 font-bold">
+               😏 Mas adivinhou a palavra e levou +2 pontos de redenção!
+             </div>`
+          : `<div class="mt-3 text-emerald-200/70 text-sm">
+               Ainda chutou "<b>${escapeHtml(r.guess)}</b>" — e errou. ❌
+             </div>`;
     banner.className = 'rounded-2xl p-6 text-center shadow-xl bg-emerald-950 ring-2 ring-emerald-500';
     banner.innerHTML = `
       <div class="text-2xl font-extrabold text-emerald-300">🎉 Impostor descoberto!</div>
       <div class="mt-2 text-emerald-100">
-        <b>${escapeHtml(r.impostorName)}</b> era o Impostor.
+        <b>${escapeHtml(r.impostorName)}</b> era o Impostor. Quem votou nele ganhou <b>+2</b>.
       </div>
       <div class="text-sm text-emerald-200/70 mt-1">
         A palavra era <b>${escapeHtml(r.word)}</b> (${escapeHtml(r.category)}).
-      </div>`;
+      </div>
+      ${guessLine}`;
   } else {
+    const hadMinority = r.votes.some((v) => v.correct);
     banner.className = 'rounded-2xl p-6 text-center shadow-xl bg-rose-950 ring-2 ring-rose-500';
     banner.innerHTML = `
       <div class="text-2xl font-extrabold text-rose-300">😈 O Impostor escapou!</div>
       <div class="mt-2 text-rose-100">
-        <b>${escapeHtml(r.impostorName)}</b> era o Impostor e não foi descoberto.
+        <b>${escapeHtml(r.impostorName)}</b> era o Impostor e levou <b>+3 pontos</b>.
       </div>
       <div class="text-sm text-rose-200/70 mt-1">
         A palavra era <b>${escapeHtml(r.word)}</b> (${escapeHtml(r.category)}).
-      </div>`;
+      </div>
+      ${hadMinority ? '<div class="mt-3 text-amber-300/90 text-sm">Quem desconfiou certo ganhou +1 de consolação. 🎯</div>' : ''}`;
   }
 
   $('results-votes').innerHTML = r.votes

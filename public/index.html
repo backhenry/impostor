@@ -160,6 +160,38 @@
 
       <div id="voting-grid" class="grid grid-cols-2 gap-3"></div>
       <p id="voting-status" class="text-center text-slate-400 text-sm"></p>
+      <p class="text-center text-xs text-slate-500 leading-relaxed">
+        🎯 Acertou o Impostor: <b class="text-emerald-400">+2</b> (ou
+        <b class="text-emerald-400">+1</b> se ele escapar) ·
+        😈 Impostor escapa: <b class="text-rose-400">+3</b> ·
+        😏 Impostor pego que adivinha a palavra: <b class="text-amber-400">+2</b>
+      </p>
+    </section>
+
+    <!-- ============ TELA: PALPITE DO IMPOSTOR ============ -->
+    <section id="screen-guessing" class="screen hidden space-y-4">
+      <div id="guessing-banner"
+        class="bg-slate-800 rounded-2xl p-6 text-center shadow-xl ring-2 ring-amber-500/60"></div>
+
+      <div class="bg-slate-800 rounded-2xl p-5 shadow-xl">
+        <h3 class="font-bold mb-3 text-sm text-slate-400">Palavras ditas na partida</h3>
+        <div id="guessing-hints" class="space-y-3 max-h-48 overflow-y-auto text-sm"></div>
+      </div>
+
+      <form id="guess-form" class="flex gap-2 hidden">
+        <input id="input-guess" maxlength="40" autocomplete="off"
+          placeholder="Qual era a palavra secreta?"
+          class="flex-1 min-w-0 rounded-lg bg-slate-700 border-0 px-3 py-3 text-lg
+          focus:ring-2 focus:ring-amber-400 outline-none" />
+        <button type="submit"
+          class="shrink-0 bg-amber-500 hover:bg-amber-400 active:scale-[.98] transition
+          rounded-lg px-6 font-bold text-slate-900">
+          Chutar
+        </button>
+      </form>
+      <p id="guessing-waiting" class="text-center text-slate-400 text-sm hidden">
+        Aguardando o palpite… 🥁
+      </p>
     </section>
 
     <!-- ============ TELA: RESULTADOS ============ -->

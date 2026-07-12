@@ -10,7 +10,8 @@ const PORT = process.env.PORT || 3000;
 
 // Tempo que um jogador desconectado tem para voltar antes de ser removido
 // (tela bloqueada no celular, troca de app, F5, oscilação de rede).
-const RECONNECT_GRACE_MS = 60_000;
+// Generoso de propósito: em celulares a conexão cai o tempo todo.
+const RECONNECT_GRACE_MS = 180_000;
 
 // Se a queda acontecer na vez do jogador, quanto tempo o turno espera por ele
 // antes de ser pulado (um F5 leva ~2s; não pode custar a vez).
@@ -199,6 +200,15 @@ io.on('connection', (socket) => {
     broadcast(room);
   });
 
+  socket.on('game:guess', ({ text }, ack) => {
+    const room = getRoom();
+    if (!room) return ack({ error: 'Sala não encontrada.' });
+    const result = room.submitGuess(socket.data.playerId, text);
+    if (result.error) return ack(result);
+    ack({ ok: true });
+    broadcast(room);
+  });
+
   socket.on('game:playAgain', (_payload, ack) => {
     const room = getRoom();
     if (!room) return ack({ error: 'Sala não encontrada.' });
@@ -242,8 +252,21 @@ io.on('connection', (socket) => {
       }, TURN_SKIP_GRACE_MS);
     }
 
+    // Se o impostor sumiu na fase de palpite, espera a tolerância e encerra.
+    if (room.phase === 'guessing' && room.game?.impostorId === playerId) {
+      const code = room.code;
+      setTimeout(() => {
+        const r = rooms.get(code);
+        if (!r || r.phase !== 'guessing') return;
+        const impostor = r.players.get(playerId);
+        if (impostor?.connected) return; // voltou a tempo
+        r.finishGame(null);
+        broadcast(r);
+      }, TURN_SKIP_GRACE_MS);
+    }
+
     // Se a saída do jogador destravou o fim da votação, resolve agora.
-    if (room.allVotesIn()) room.finishGame();
+    if (room.allVotesIn()) room.closeVoting();
 
     broadcast(room);
   });

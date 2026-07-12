@@ -5,6 +5,7 @@ const PHASES = {
   LOBBY: 'lobby',       // aguardando jogadores / configuração
   PLAYING: 'playing',   // rodadas de palavras-dica
   VOTING: 'voting',     // mural de votação
+  GUESSING: 'guessing', // impostor desmascarado tenta adivinhar a palavra
   RESULTS: 'results',   // revelação e pontuação
 };
 
@@ -14,8 +15,19 @@ const MIN_ROUNDS = 1;
 const MAX_ROUNDS = 5;
 
 // Pontuação
-const POINTS_IMPOSTOR_ESCAPED = 3; // impostor não foi o mais votado
-const POINTS_CORRECT_VOTE = 2;     // jogador comum que votou no impostor descoberto
+const POINTS_IMPOSTOR_ESCAPED = 3;      // impostor não foi o mais votado
+const POINTS_CORRECT_VOTE = 2;          // votou no impostor e ele foi descoberto
+const POINTS_CORRECT_VOTE_MINORITY = 1; // votou no impostor, mas ele escapou
+const POINTS_IMPOSTOR_GUESS = 2;        // impostor descoberto adivinha a palavra
+
+/** Compara palavras ignorando caixa, acentos e espaços nas pontas. */
+function normalizeWord(text) {
+  return String(text || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
 
 function shuffle(array) {
   const copy = [...array];
@@ -148,6 +160,7 @@ class Room {
       turnIndex: 0,
       hints: [],  // { playerId, name, text, round }
       votes: {},  // voterId -> targetId
+      caught: null, // definido ao fechar a votação
       results: null,
     };
     this.phase = PHASES.PLAYING;
@@ -167,7 +180,7 @@ class Room {
 
     const hint = String(text || '').trim().slice(0, 40);
     if (!hint) return { error: 'Digite uma palavra.' };
-    if (hint.toLowerCase() === this.game.word.toLowerCase()) {
+    if (normalizeWord(hint) === normalizeWord(this.game.word)) {
       return { error: 'Você não pode dizer a própria palavra secreta!' };
     }
 
@@ -228,7 +241,7 @@ class Room {
 
     this.game.votes[voterId] = targetId;
 
-    if (this.allVotesIn()) this.finishGame();
+    if (this.allVotesIn()) this.closeVoting();
     return { ok: true };
   }
 
@@ -240,9 +253,12 @@ class Room {
     );
   }
 
-  // ---------- Revelação e pontuação ----------
-
-  finishGame() {
+  /**
+   * Fecha a votação: se o impostor foi descoberto e está conectado, ele ganha
+   * uma última chance de adivinhar a palavra (fase GUESSING); caso contrário,
+   * a partida termina direto.
+   */
+  closeVoting() {
     const { votes, impostorId } = this.game;
 
     // Conta os votos por alvo.
@@ -254,25 +270,62 @@ class Room {
     // O impostor é descoberto se for o ÚNICO mais votado (empate = escapou).
     const max = Math.max(0, ...Object.values(tally));
     const mostVoted = Object.keys(tally).filter((id) => tally[id] === max);
-    const caught = max > 0 && mostVoted.length === 1 && mostVoted[0] === impostorId;
+    this.game.caught = max > 0 && mostVoted.length === 1 && mostVoted[0] === impostorId;
+
+    const impostor = this.players.get(impostorId);
+    if (this.game.caught && impostor?.connected) {
+      this.phase = PHASES.GUESSING;
+    } else {
+      this.finishGame(null);
+    }
+  }
+
+  /** Palpite de redenção do impostor desmascarado. */
+  submitGuess(playerId, text) {
+    if (this.phase !== PHASES.GUESSING) return { error: 'Não é a fase de palpite.' };
+    if (playerId !== this.game.impostorId) return { error: 'Apenas o impostor dá o palpite.' };
+    const guess = String(text || '').trim().slice(0, 40);
+    if (!guess) return { error: 'Digite o seu palpite.' };
+    this.finishGame(guess);
+    return { ok: true };
+  }
+
+  // ---------- Revelação e pontuação ----------
+
+  finishGame(guess) {
+    const { votes, impostorId, caught } = this.game;
+    const impostor = this.players.get(impostorId);
+
+    const guessedRight =
+      guess !== null && normalizeWord(guess) === normalizeWord(this.game.word);
 
     if (caught) {
-      // Jogadores comuns que votaram corretamente pontuam.
+      // Quem desmascarou o impostor pontua.
       for (const [voterId, targetId] of Object.entries(votes)) {
         if (voterId !== impostorId && targetId === impostorId) {
           const p = this.players.get(voterId);
           if (p) p.score += POINTS_CORRECT_VOTE;
         }
       }
+      // Redenção: descoberto, mas adivinhou a palavra.
+      if (guessedRight && impostor) impostor.score += POINTS_IMPOSTOR_GUESS;
     } else {
-      const impostor = this.players.get(impostorId);
       if (impostor) impostor.score += POINTS_IMPOSTOR_ESCAPED;
+      // Consolação: votou certo mesmo com o impostor escapando.
+      for (const [voterId, targetId] of Object.entries(votes)) {
+        if (voterId !== impostorId && targetId === impostorId) {
+          const p = this.players.get(voterId);
+          if (p) p.score += POINTS_CORRECT_VOTE_MINORITY;
+        }
+      }
     }
 
     this.game.results = {
       impostorId,
-      impostorName: this.players.get(impostorId)?.name || '???',
+      impostorName: impostor?.name || '???',
       caught,
+      guess,
+      guessedRight,
       word: this.game.word,
       category: this.game.category,
       votes: Object.entries(votes).map(([voterId, targetId]) => ({
@@ -284,13 +337,14 @@ class Room {
     this.phase = PHASES.RESULTS;
   }
 
-  /** Volta ao lobby mantendo jogadores e placar; remove quem desconectou. */
+  /**
+   * Volta ao lobby mantendo jogadores e placar. Jogadores desconectados NÃO
+   * são removidos aqui — a tela do celular bloqueia o tempo todo, e quem cair
+   * entre partidas ainda tem o período de tolerância para voltar.
+   */
   resetToLobby(requesterId) {
     if (requesterId !== this.hostId) return { error: 'Apenas o host pode iniciar uma nova partida.' };
     if (this.phase !== PHASES.RESULTS) return { error: 'A partida ainda não terminou.' };
-    for (const [id, p] of this.players) {
-      if (!p.connected) this.players.delete(id);
-    }
     this.game = null;
     this.phase = PHASES.LOBBY;
     return { ok: true };
@@ -326,6 +380,11 @@ class Room {
             totalRounds: this.settings.rounds,
             currentTurnId: this.currentTurnId(),
             hints: this.game.hints,
+            // Na fase de palpite o impostor já foi desmascarado publicamente.
+            guessingName:
+              this.phase === PHASES.GUESSING
+                ? this.players.get(this.game.impostorId)?.name || '???'
+                : null,
             results: this.phase === PHASES.RESULTS ? this.game.results : null,
           }
         : null,

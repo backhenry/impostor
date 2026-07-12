@@ -85,12 +85,13 @@ A porta pode ser alterada com a variável de ambiente `PORT` (ex: `PORT=8080 npm
 
 ### Reconexão automática
 
-Cada aba/dispositivo guarda uma **chave de sessão** no navegador (`sessionStorage`).
+Cada dispositivo guarda uma **chave de sessão** no navegador (`localStorage`,
+com `sessionStorage` por cima para permitir múltiplas abas em testes).
 Se a tela do celular bloquear, o app for para segundo plano ou a página for
 recarregada, o jogador **volta automaticamente para a mesma cadeira** — mesmo
 papel (palavra ou impostor), mesmo placar e mesmo turno. Se a queda acontecer
 na vez do jogador, o turno espera **10 segundos** pela volta dele antes de ser
-pulado. Quem ficar desconectado por mais de **60 segundos** é removido da sala
+pulado. Quem ficar desconectado por mais de **3 minutos** é removido da sala
 (no lobby) ou tem os turnos pulados (durante a partida) para não travar o jogo
 dos demais.
 
@@ -105,10 +106,16 @@ dos demais.
    secreta. Nem óbvia demais (o Impostor descobre), nem vaga demais (você vira suspeito).
 5. **Votação** — ao fim das rodadas, o Mural de Votação aparece e cada um vota em
    quem acha que é o Impostor (o Impostor também vota, para disfarçar).
-6. **Resultado** —
-   - Impostor **não** é o mais votado (ou há empate): ele escapou e ganha **+3 pontos**.
-   - Impostor é o mais votado: cada jogador que votou nele ganha **+2 pontos**.
-7. O host pode iniciar uma nova partida mantendo o placar acumulado.
+6. **Palpite de redenção** — se o Impostor for o mais votado, ele ganha uma
+   última chance: adivinhar qual era a palavra secreta.
+7. **Pontuação** —
+   | Situação | Pontos |
+   |---|---|
+   | Impostor escapa (não é o único mais votado) | Impostor **+3** |
+   | Você votou no Impostor e ele foi descoberto | **+2** |
+   | Você votou no Impostor, mas ele escapou | **+1** de consolação |
+   | Impostor descoberto acerta a palavra no palpite | Impostor **+2** |
+8. O host pode iniciar uma nova partida mantendo o placar acumulado.
 
 ## Arquitetura
 
@@ -128,9 +135,10 @@ Impostor/
 ### Fluxo de estados no servidor
 
 ```
-lobby ──game:start──▶ playing ──fim das rodadas──▶ voting ──todos votaram──▶ results
-  ▲                                                                            │
-  └────────────────────────── game:playAgain (host) ◀─────────────────────────┘
+lobby ──▶ playing ──▶ voting ──impostor descoberto──▶ guessing ──▶ results
+  ▲                      │                                           │
+  │                      └──────impostor escapou────────────────────▶│
+  └────────────────── game:playAgain (host) ◀────────────────────────┘
 ```
 
 ### Eventos Socket.io
@@ -144,6 +152,7 @@ lobby ──game:start──▶ playing ──fim das rodadas──▶ voting �
 | `game:start` | — | Host inicia; sorteia impostor e palavra |
 | `game:hint` | `{ text }` | Envia palavra-dica na sua vez |
 | `game:vote` | `{ targetId }` | Vota em um suspeito |
+| `game:guess` | `{ text }` | Palpite de redenção do impostor desmascarado |
 | `game:playAgain` | — | Host volta ao lobby mantendo placar |
 
 | Evento (servidor → cliente) | Descrição |
@@ -163,7 +172,7 @@ lobby ──game:start──▶ playing ──fim das rodadas──▶ voting �
   (UUID) que sobrevive a quedas de conexão. O `socket.id` é apenas o endereço
   de entrega atual. Isso torna o jogo utilizável em celulares, onde a conexão
   cai o tempo todo (tela bloqueada, troca de app).
-- Jogadores desconectados têm 60s para voltar. Se caírem na própria vez, o
+- Jogadores desconectados têm 3 minutos para voltar. Se caírem na própria vez, o
   turno espera 10s pela reconexão antes de ser pulado; a votação nunca trava
   esperando quem caiu. Se o host cair e não voltar em 10s, a coroa passa para
   outro jogador conectado.
